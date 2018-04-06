@@ -18,7 +18,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -84,6 +83,9 @@ public class JSONApiConverter {
     }
 
     public String toJson(Resource resource) {
+        //if (gson != null) {
+        //    return gson.toJson(resource);
+        //}
         JSONObject json = toJsonObject(resource);
         if (json != null)
             return json.toString();
@@ -121,6 +123,16 @@ public class JSONApiConverter {
                         includes.remove(key);
                         includes.put(key, resourceFromJson(each, includes));
                     }
+
+                    //Third pass
+                    for (int i = 0; i < included.length(); i++) {
+                        JSONObject each = included.getJSONObject(i);
+                        String key = getResourceTag(each);
+
+                        includes.remove(key);
+                        includes.put(key, resourceFromJson(each, includes));
+                    }
+
                 }
 
                 if (!json.isNull("data")) {
@@ -220,91 +232,18 @@ public class JSONApiConverter {
         attrMainField.setBoolean(resource, jsonObject.isNull("attributes"));
         attrMainField.setAccessible(oldAccessibleAccessible);
 
-        //Pega os atributos da classe
         List<Field> fields = getFields(resource.getClass());
-        HashMap<String, Field> fieldsHash = new HashMap<>();
-
-        for (Field f : fields) {
-            if (f.getAnnotation(SerialName.class) != null)
-                fieldsHash.put(f.getAnnotation(SerialName.class).value(), f);
-            else
-                fieldsHash.put(f.getName(), f);
-        }
+        fields.remove(typeMainField);
+        HashMap<String, Field> fieldsHash = makeFieldsMap(fields);
 
         if (!jsonObject.isNull("attributes")) {
-            //Separa os atributos do JSON
             JSONObject attributes = jsonObject.getJSONObject("attributes");
-            Iterator<String> it = attributes.keys();
-
-            while (it.hasNext()) {
-                String attr = it.next();
-                Object value = attributes.get(attr);
-
-                if (fieldsHash.containsKey(attr)) {
-                    Field currentField = fieldsHash.get(attr);
-                    Boolean oldAccessible = currentField.isAccessible();
-                    currentField.setAccessible(true);
-
-                    try {
-                        if (value instanceof String) {
-                            if (currentField.getType().equals(char.class))
-                                currentField.setChar(resource, String.valueOf(value).charAt(0));
-                            else if (currentField.getType().equals(String.class))
-                                currentField.set(resource, value);
-                            else if (currentField.getType().equals(Date.class))
-                                currentField.set(resource, parseDate(String.valueOf(value)));
-                            else if (currentField.getType().equals(double.class) || currentField.getType().equals(Double.class))
-                                currentField.set(resource, Double.valueOf(String.valueOf(value)));
-                            else if (currentField.getType().equals(float.class) || currentField.getType().equals(Float.class))
-                                currentField.set(resource, Float.valueOf(String.valueOf(value)));
-                            else
-                                Log.e("JSONApiConverter", "Type not setted (" + currentField.getType().getName() + ")");
-                        } else if (value instanceof Double || value instanceof Float) {
-                            if (currentField.getType().equals(float.class) || currentField.getType().equals(Float.class))
-                                currentField.setDouble(resource, (float) value);
-                            else if (currentField.getType().equals(double.class) || currentField.getType().equals(Double.class))
-                                currentField.setDouble(resource, (double) value);
-                        } else if (value instanceof Integer) {
-                            currentField.setInt(resource, (int) value);
-                        } else if (value instanceof Long) {
-                            currentField.setLong(resource, (long) value);
-                        } else if (value instanceof Character) {
-                            currentField.setChar(resource, (char) value);
-                        } else if (value instanceof Boolean) {
-                            currentField.setBoolean(resource, (boolean) value);
-                        } else if (value instanceof JSONObject) {
-                            JSONObject json = (JSONObject) value;
-                            Map<String, Object> data = new HashMap<>();
-
-                            Iterator<String> keys = json.keys();
-                            while (keys.hasNext()) {
-                                String k = keys.next();
-                                data.put(k, json.get(k));
-                            }
-
-                            currentField.set(resource, data);
-                        } else if (value instanceof JSONArray) {
-                            JSONArray array = (JSONArray) value;
-                            List<Object> arrayData = new ArrayList<>();
-                            if (array.length() > 0) {
-                                for (int i = 0; i < array.length(); i++) {
-                                    arrayData.add(array.get(i));
-                                }
-                            }
-                            currentField.set(resource, arrayData);
-                        }
-                    } catch (Exception ex) {
-                        Log.e("JSONApiConverter", String.format("Failed to pass attribute %s", attr));
-                    }
-
-                    currentField.setAccessible(oldAccessible);
-                }
-            }
+            parseAttributes(resource, attributes, fieldsHash);
         }
 
         //Termina os atributos
         //Inicia os relationships
-        if (!jsonObject.isNull("relationships")) {
+        if (!jsonObject.isNull("relationships") && jsonObject.get("relationships") instanceof JSONObject) {
             JSONObject relationships = jsonObject.getJSONObject("relationships");
             Iterator <String> keys = relationships.keys();
             while (keys.hasNext()) {
@@ -312,12 +251,6 @@ public class JSONApiConverter {
                 JSONObject eachRelation = relationships.getJSONObject(key);
 
                 Object data = eachRelation.get("data");
-
-                if (data == null || data == JSONObject.NULL) {
-                    //Forcing the data to be an actual object in order to keep parsing the links on data:null
-                    data = new JSONArray();
-                }
-
                 if (fieldsHash.containsKey(key)){
                     Field field = fieldsHash.get(key);
                     Boolean oldAccessible = field.isAccessible();
@@ -400,13 +333,99 @@ public class JSONApiConverter {
         return resource;
     }
 
+    private void parseAttributes(Object resource, JSONObject attributes, HashMap<String, Field> fieldsHash) throws JSONException {
+        Iterator<String> it = attributes.keys();
+        while (it.hasNext()) {
+            String attr = it.next();
+            Object value = attributes.get(attr);
+
+            if (fieldsHash.containsKey(attr)) {
+                Field currentField = fieldsHash.get(attr);
+                Boolean oldAccessible = currentField.isAccessible();
+                currentField.setAccessible(true);
+
+                try {
+                    if (value instanceof String) {
+                        if (currentField.getType().equals(char.class))
+                            currentField.setChar(resource, String.valueOf(value).charAt(0));
+                        else if (currentField.getType().equals(String.class))
+                            currentField.set(resource, value);
+                        else if (currentField.getType().equals(Date.class))
+                            currentField.set(resource, parseDate(String.valueOf(value)));
+                        else if (currentField.getType().equals(double.class) || currentField.getType().equals(Double.class))
+                            currentField.set(resource, Double.valueOf(String.valueOf(value)));
+                        else if (currentField.getType().equals(float.class) || currentField.getType().equals(Float.class))
+                            currentField.set(resource, Float.valueOf(String.valueOf(value)));
+                        else
+                            Log.e("JSONApiConverter", "Origin not setted (" + currentField.getType().getName() + ")");
+                    } else if (value instanceof Double) {
+                        if (currentField.getType().equals(float.class))
+                            currentField.setFloat(resource, ((Double) value).floatValue());
+                        else if (currentField.getType().equals(Float.class))
+                            currentField.set(resource, ((Double) value).floatValue());
+                        else if (currentField.getType().equals(double.class))
+                            currentField.setDouble(resource, (double) value);
+                        else if (currentField.getType().equals(Double.class))
+                            currentField.set(resource, value);
+                    } else if (value instanceof Integer) {
+                        if (currentField.getType().equals(double.class))
+                            currentField.setDouble(resource, ((Integer) value).doubleValue());
+                        else if (currentField.getType().equals(Double.class))
+                            currentField.set(resource, ((Integer) value).doubleValue());
+                        else if (currentField.getType().equals(float.class))
+                            currentField.setFloat(resource, ((Integer) value).floatValue());
+                        else if (currentField.getType().equals(Float.class))
+                            currentField.set(resource, ((Integer) value).floatValue());
+                        else if (currentField.getType().equals(Integer.class))
+                            currentField.set(resource, value);
+                        else if (currentField.getType().equals(int.class))
+                            currentField.setInt(resource, (Integer) value);
+                    } else if (value instanceof Long) {
+                        currentField.setLong(resource, (long) value);
+                    } else if (value instanceof Character) {
+                        currentField.setChar(resource, (char) value);
+                    } else if (value instanceof Boolean) {
+                        currentField.set(resource, (boolean) value);
+                    } else if (value instanceof JSONObject) {
+                        List<Field> fields = getFields(currentField.getType());
+                        HashMap<String, Field> fieldsMap = makeFieldsMap(fields);
+                        Object nestedJsonResource =  currentField.getType().newInstance();
+                        parseAttributes(nestedJsonResource, (JSONObject) value, fieldsMap);
+                        //JSONObject json = (JSONObject) value;
+                        //Object res = gson.fromJson(json.toString(), currentField.getType());
+                        currentField.set(resource, nestedJsonResource);
+                    } else if (value instanceof JSONArray) {
+                        JSONArray array = (JSONArray) value;
+                        List<Object> arrayData = new ArrayList<>();
+                        if (array.length() > 0) {
+                            for (int i = 0; i < array.length(); i++) {
+                                arrayData.add(array.get(i));
+                            }
+                        }
+                        currentField.set(resource, arrayData);
+                    }
+                } catch (Exception ex) {
+                    Log.e("JSONApiConverter", String.format("Failed to pass attribute %s", attr));
+                    ex.printStackTrace();
+                }
+
+                currentField.setAccessible(oldAccessible);
+            }
+        }
+    }
+
     private Links linksFromJson(JSONObject linksJson) throws NoSuchFieldException, JSONException, IllegalAccessException {
         Links links = new Links();
-
+        try {
+            parseAttributes(links, linksJson, makeFieldsMap(getFields(links.getClass())));
+        } catch (JSONException e){
+            Log.e("JSONApiConverter", String.format("Failed to resolve links json"));
+            //e.printStackTrace();
+        }
+        /*
         Iterator<String> it = linksJson.keys();
         while (it.hasNext()) {
             String next = it.next();
-            if (links.getClass().getDeclaredField(next) != null) {
                 Field currentField = links.getClass().getDeclaredField(next);
 
                 Boolean oldAccessible = currentField.isAccessible();
@@ -415,8 +434,7 @@ public class JSONApiConverter {
                 currentField.set(links, linksJson.getString(next));
 
                 currentField.setAccessible(oldAccessible);
-            }
-        }
+        }*/
 
         return links;
     }
@@ -570,15 +588,15 @@ public class JSONApiConverter {
                         } else if (field.get(resource) instanceof String) {
                             attributes.put(fieldName, String.valueOf(field.get(resource)));
                         } else if (field.get(resource) instanceof Integer) {
-                            attributes.put(fieldName, field.getInt(resource));
+                            attributes.put(fieldName, field.get(resource));
                         } else if (field.get(resource) instanceof Double || field.get(resource) instanceof Float) {
                             attributes.put(fieldName, Double.valueOf(String.valueOf(field.get(resource))));
                         } else if (field.get(resource) instanceof Long) {
-                            attributes.put(fieldName, field.getLong(resource));
+                            attributes.put(fieldName, field.get(resource));
                         } else if (field.get(resource) instanceof Character) {
                             attributes.put(fieldName, Character.toString(field.getChar(resource)));
                         } else if (field.get(resource) instanceof Boolean) {
-                            attributes.put(fieldName, field.getBoolean(resource));
+                            attributes.put(fieldName, field.get(resource));
                         } else if (field.get(resource) instanceof Date) {
                             attributes.put(fieldName, dateFormatToServer.format((Date) field.get(resource)).replace(" ", "T"));
                         } else if (field.get(resource) instanceof Map) {
@@ -603,6 +621,7 @@ public class JSONApiConverter {
                         }
                     } catch (Exception ex) {
                         Log.e("JSONApiConverter", String.format("Failed to pass attribute %s", fieldName));
+                        ex.printStackTrace();
                     }
                 }
 
@@ -723,13 +742,28 @@ public class JSONApiConverter {
 
     private List<Field> getFields(Class<?> type) {
         List<Field> fields = new ArrayList<>();
-        fields.addAll(Arrays.asList(type.getDeclaredFields()));
+        for (Field field : type.getDeclaredFields()) {
+            if (!field.getName().equals("serialVersionUID"))
+                fields.add(field);
+        }
 
         if (type.getSuperclass() != null && !type.getSuperclass().getName().equals(Object.class.getName())) {
             fields.addAll(getFields(type.getSuperclass()));
         }
 
         return fields;
+    }
+
+
+    private HashMap<String, Field> makeFieldsMap(List<Field> fields) {
+        HashMap<String, Field> fieldsHash = new HashMap<>();
+        for (Field f : fields) {
+            if (f.getAnnotation(SerialName.class) != null)
+                fieldsHash.put(f.getAnnotation(SerialName.class).value(), f);
+            else
+                fieldsHash.put(f.getName(), f);
+        }
+        return fieldsHash;
     }
 
 }

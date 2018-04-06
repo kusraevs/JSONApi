@@ -1,6 +1,7 @@
 package br.com.gustavofao.jsonapisample.V2;
 
 import com.gustavofao.jsonapi.Annotations.Type;
+import com.gustavofao.jsonapi.Models.Meta;
 import com.gustavofao.jsonapi.Models.Resource;
 
 import java.util.Date;
@@ -11,6 +12,7 @@ public class Conversation extends Resource {
     private String message;
     private Date date;
     private Person person;
+    private Meta meta;
 
     public String getMessage() {
         return message;
@@ -34,5 +36,13 @@ public class Conversation extends Resource {
 
     public void setPerson(Person person) {
         this.person = person;
+    }
+
+    public Meta getMeta() {
+        return meta;
+    }
+
+    public void setMeta(Meta meta) {
+        this.meta = meta;
     }
 }

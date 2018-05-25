@@ -3,7 +3,7 @@ apply plugin: 'com.github.dcendents.android-maven'
 apply plugin: 'com.jfrog.bintray'
 
 ext {
-    bintrayRepo = 'maven'
+    bintrayRepo = 'JsonApiConverter'
     bintrayName = 'JsonApiConverter'
 
     publishedGroupId = 'com.gustavofao.jsonapi'
@@ -15,7 +15,7 @@ ext {
     siteUrl = 'https://github.com/kusraevs/JSONApi'
     gitUrl = 'https://github.com/kusraevs/JSONApi.git'
 
-    libraryVersion = '1.0.9.4'
+    libraryVersion = '1.0.9.6'
 
     developerId = 'kusraevs'
     developerName = 'Soslan Kusraev'
@@ -32,8 +32,8 @@ android {
     defaultConfig {
         minSdkVersion 14
         targetSdkVersion 25
-        versionCode 8
-        versionName "1.0.9.3"
+        versionCode 10
+        versionName "1.0.9.6"
     }
     buildTypes {
         release {
@@ -124,7 +124,6 @@ properties.load(project.rootProject.file('local.properties').newDataInputStream(
 bintray {
     user = properties.getProperty("bintray.user")
     key = properties.getProperty("bintray.apikey")
-
     configurations = ['archives']
     pkg {
         repo = bintrayRepo
@@ -135,9 +134,10 @@ bintray {
         licenses = allLicenses
         dryRun = false
         publish = true
-        override = false
+        override = true
         publicDownloadNumbers = true
         version {
+            
             desc = libraryDescription
         }
     }

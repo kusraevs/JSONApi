@@ -83,9 +83,6 @@ public class JSONApiConverter {
     }
 
     public String toJson(Resource resource) {
-        //if (gson != null) {
-        //    return gson.toJson(resource);
-        //}
         JSONObject json = toJsonObject(resource);
         if (json != null)
             return json.toString();
@@ -483,9 +480,10 @@ public class JSONApiConverter {
     private JSONObject toJsonObject(Resource resource) {
         try {
             Resource ninstance = resource.getClass().newInstance();
+            /*
             if (resource.equals(ninstance)) {
                 return new JSONObject();
-            }
+            }*/
         } catch (Exception e) {}
 
         List<Field> fields = getFields(resource.getClass());
@@ -707,7 +705,7 @@ public class JSONApiConverter {
             } else if (field.get(resource) instanceof String) {
                 attributes.put(fieldName, String.valueOf(field.get(resource)));
             } else if (field.get(resource) instanceof Integer) {
-                attributes.put(fieldName, field.getInt(resource));
+                attributes.put(fieldName, field.get(resource));
             } else if (field.get(resource) instanceof Double || field.get(resource) instanceof Float) {
                 attributes.put(fieldName, Double.parseDouble(String.valueOf(field.get(resource))));
             } else if (field.get(resource) instanceof Long) {
